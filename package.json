@@ -1,0 +1,30 @@
+{
+  "name": "flickr-album-organizer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "forever": "npx forever start -o forever-log.out -e forever-error.log src/index.js",
+    "format": "eslint --fix \"$PWD/src/**/*.js\"",
+    "oauth": "bash ./generate-cert.sh && node src/oauth.js",
+    "start": "node src/index.js",
+    "update": "ncu -u && npm update && rm package-lock.json && npm install"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.24.0",
+    "dotenv": "^10.0.0",
+    "express": "^4.17.2",
+    "flickr-sdk": "^4.0.0",
+    "forever": "^4.0.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.3.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "nodemon": "^2.0.15",
+    "npm-check-updates": "^12.0.2"
+  }
+}
