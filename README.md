@@ -56,7 +56,7 @@ The other section of code generates local TLS certs you'll need to complete the 
     1. To authorize your app (yes, that's required as part of the Oauth process, generating the key and secret is not enough by itself) you'll need to run a server on your local machine, open that in your web browser, then click the authorize button. The app will record the credentials produced by that process and save them for you in the `.env` file
     1. To make the above more complicated, the process requires the local server be HTTPS, HTTP will not do. So you need to generate a self-signed certificate locally to produce `key.pem` and `cert.pem` files
     1. I have a bash script that will generate those files for you (`generate-cert.sh`) but we can kill two birds with one one by just running `npm run oauth`, which will run that bash script and then start up the server. So let's do that and see what that looks like
-    1. If succesfull you should see this in your terminal ![](/img/flickr-3.png)
+    1. If succesful you should see this in your terminal ![](/img/flickr-3.png)
     1. As the terminal says, open your web browser and navigate to [https://localhost:3000](https://localhost:3000).
     1. You'll get a warning that it's unsafe. That's expected, because the cert is self-signed. Click "Advanced" and "Proceed to localhost (unsafe)" ![](/img/flickr-4.png)
     1. You should see the authorization screen in your browser. Click "OK, I'LL AUTHORIZE IT" ![](/img/flickr-5.png)
