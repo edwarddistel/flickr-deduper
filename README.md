@@ -80,6 +80,7 @@ If you want to use the endpoints programmed into this app, here they are.
 | http://localhost:3000/get-photos | obtains all photo data from album listed in `.env` file |
 | http://localhost:3000/get-photosets | lists all photosets associated with user |
 | http://localhost:3000/dedupe | dangerous! deletes duplicate photos in the specified album |
+| http://localhost:3000/info | return the current data set |
 | http://localhost:3000/reorder | attempts to re-sort album by most recently taken photo |
 | http://localhost:3000/get-sizes | gets the largest file sizes for photos in the album |
 | http://localhost:3000/save-data | saves obtained data to your computer |
