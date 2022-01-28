@@ -1,11 +1,11 @@
 # cron job to run the Flickr deduper app once a day from within a Docker image
 0 0 * * * /bin/echo $(date) > /usr/app/flickr-cron-log.txt
-0 0 * * * /bin/echo $(date) > /usr/app/forever-log.out
-0 0 * * * /bin/echo $(date) > /usr/app/forever-error.log
+1 0 * * * /bin/echo $(date) > /usr/app/forever-log.out
+2 0 * * * /bin/echo $(date) > /usr/app/forever-error.log
 5 0 * * * /usr/bin/curl -s http://localhost:3000/get-photosets >> /usr/app/flickr-cron-log.txt 2>&1
 10 0 * * * /usr/bin/curl -s http://localhost:3000/get-photos >> /usr/app/flickr-cron-log.txt 2>&1
 15 0 * * * /usr/bin/curl -s http://localhost:3000/dedupe >> /usr/app/flickr-cron-log.txt 2>&1
+25 0 * * * /usr/bin/curl -s http://localhost:3000/save-data >> /usr/app/flickr-cron-log.txt 2>&1
 30 0 * * * /usr/bin/curl -s http://localhost:3000/reorder >> /usr/app/flickr-cron-log.txt 2>&1
 10 1 * * * /usr/bin/curl -s http://localhost:3000/get-sizes >> /usr/app/flickr-cron-log.txt 2>&1
 10 2 * * * /usr/bin/curl -s http://localhost:3000/save-data >> /usr/app/flickr-cron-log.txt 2>&1
-10 3 * * * /usr/bin/curl -s http://localhost:3000/save-data >> /usr/app/flickr-cron-log.txt 2>&1
