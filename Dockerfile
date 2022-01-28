@@ -1,6 +1,8 @@
 FROM node:17-slim
 
 WORKDIR /usr/app
+ENV TZ=America/New_York
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 COPY package*.json ./
 COPY . .
 COPY .env .env
