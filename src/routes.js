@@ -49,57 +49,81 @@ module.exports = function (app) {
   });
 
   app.get('/test-login', async (req, res) => {
-    const results = await testLogin(flickr);
-    res.send({
-      date: formatDate(),
-      msg: 'Tested login',
-      output: results,
-    });
+    try {
+      const results = await testLogin(flickr);
+      res.send({
+        date: formatDate(),
+        msg: 'Tested login',
+        output: results,
+      });
+    } catch (err) {
+      console.error('Error testing login', err);
+    }
   });
 
   app.get('/get-photos', async (req, res) => {
-    const results = await getPhotoIDs(flickr, albumParams, albumData);
-    res.send({
-      date: formatDate(),
-      msg: 'Refreshed photo list',
-      results,
-    });
+    try {
+      const results = await getPhotoIDs(flickr, albumParams, albumData);
+      res.send({
+        date: formatDate(),
+        msg: 'Refreshed photo list',
+        results,
+      });
+    } catch (err) {
+      console.error('Error getting photos', err);
+    }
   });
 
   app.get('/get-photosets', async (req, res) => {
-    const photosets = await getListOfPhotoSets(flickr, albumData);
-    res.send({
-      date: formatDate(),
-      photosets,
-    });
+    try {
+      const photosets = await getListOfPhotoSets(flickr, albumData);
+      res.send({
+        date: formatDate(),
+        photosets,
+      });
+    } catch (err) {
+      console.error('Error getting photosets', err);
+    }
   });
 
   app.get('/dedupe', async (req, res) => {
-    const status = await deleteDupes(flickr, albumData);
-    res.send({
-      date: formatDate(),
-      msg: status,
-    });
+    try {
+      const status = await deleteDupes(flickr, albumData);
+      res.send({
+        date: formatDate(),
+        msg: status,
+      });
+    } catch (err) {
+      console.error('Error de-duping', err);
+    }
   });
 
   app.get('/reorder', async (req, res) => {
-    await sortByDateTaken(flickr, albumData);
-    res.send({
-      date: new Date(),
-      msg: 'Photos reordered',
-    });
+    try {
+      await sortByDateTaken(flickr, albumData);
+      res.send({
+        date: new Date(),
+        msg: 'Photos reordered',
+      });
+    } catch (err) {
+      console.error('Error reordering', err);
+    }
   });
 
   app.get('/get-sizes', (req, res) => {
-    const photoNum = countMissingUrls(albumData);
-    const minutes = Math.round((photoNum * 2.5) / 60);
-    const time = `Get photo URLs initiated. With ${photoNum} photos it should take ~${minutes} minutes to download all.`;
-    getSizes(flickr, albumData);
-    res.send({
-      date: new Date(),
-      msg: 'Sizes retrieved',
-      data: time,
-    });
+    try {
+      const photoNum = countMissingUrls(albumData);
+      const minutes = Math.round((photoNum * 2.5) / 60);
+      const time = `Get photo URLs initiated. With ${photoNum} photos it should take ~${minutes} minutes to download all.`;
+      getSizes(flickr, albumData);
+      res.send({
+        date: new Date(),
+        msg: 'Sizes retrieved',
+        data: time,
+      });
+    } catch (err) {
+      console.error('Error getting photo sizes', err);
+    }
   });
 
   app.get('/save-data', (req, res) => {
