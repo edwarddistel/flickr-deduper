@@ -99,7 +99,15 @@ One note on the `/reorder` endpoint tho:
 
 Flckr has a strange way of reordering photos that I don't fully understand, but this is the least worst approach I could come up with.
 
-**Problem 1:** If you have a lot of photos you can't order them all in the same request because the request URI is too long (limited by Nginx/Apache). You must batch the reorder requests.
+**Problem 1:** Using the standard Flickr SDK for their REST API endpoints (either `photosets.reorderPhotos` or `photosets.editPhotos`) will return a `414` error if there are too many photo IDs, saying:
+
+```
+Error: URI Too Long
+    at Request.callback (/flickr-deduper/node_modules/superagent/lib/node/index.js:883:15)
+    at IncomingMessage.<anonymous> (/flickr-deduper/node_modules/superagent/lib/node/index.js:1127:20)
+```
+
+If there's a way around this problem I have yet to find it, possibly the issue is with the Flickr SDK using `superagent` to send the photo IDs as one long string - one would probably have to not use the SDK and POST directly to the REST endpoint with the data payload as JSON, but that means [signing the request](https://www.flickr.com/services/api/auth.oauth.html) -- which is almost tantamount to writing one's own Flickr API SDK.
 
 **Problem 2:** The [Flickr documentation](https://www.flickr.com/services/api/flickr.photosets.reorderPhotos.html) says if a photo ID is not present in the request it doesn't change. But that's not strictly true, if you send batches of 500 photos (roughly the limit of IDs that can fit into a single URI) it will not displace or push the order of the first 500 photos, instead it will oddly splice the order.
 
@@ -112,11 +120,9 @@ Req 3: Photo1001, Photo1002, Photo1003...
 
 In many cases the resulting order will be `Photo1`, `Photo501`, `Photo10001`. But not always! And I'm not sure why. Maybe it's a timing thing and I need to add a wait to these requests so Flickr has more time to process them? Not sure.
 
-If you use the "Organizr" via the Flickr WebUI it will correctly order things but inspecting the network requests it appears to be using undocumented features of the REST API that I don't have the time or interest to explore.
+While the below is not perfect it roughly puts things in descending order of most recently shot first, using the timestamp of the photo.
 
-In any event, while the below is not perfect it roughly puts things in descending order of most recently shot first, using the timestamp of the photo.
-
-It does this by first creating a set of subarrays, however many are needed to support 500 photo IDs at a time.
+It does this by first creating a set of subarrays, however many are needed to support 250 photo IDs at a time.
 
 Then it uses modular arithmetic to distribute photos sequentially into the resulting subarrays.
 
