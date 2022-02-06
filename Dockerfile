@@ -11,5 +11,6 @@ COPY flickr-cron /etc/cron.d/flickr-cron
 RUN chmod 0644 /etc/cron.d/flickr-cron
 RUN crontab /etc/cron.d/flickr-cron
 RUN npm install
+RUN sed -i 's/.query(args)/.param(args)/' ./node_modules/flickr-sdk/services/rest.js
 CMD ["cron", "-f"]
 RUN npm run forever

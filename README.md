@@ -40,6 +40,7 @@ The other section of code generates local TLS certs you'll need to complete the 
     FLICKR_OAUTH_TOKEN_SECRET=tbd
     FLICKR_OAUTH_TOKEN_VERIFIER=tbd
     FLICKR_ALBUM_ID=tbd
+    FLICKR_PRIMARY_PHOTO_ID=tbd
     USER_ID=tbd
     LOCAL_KEY_FILE=key.pem
     LOCAL_CERT_FILE=cert.pem
@@ -47,6 +48,7 @@ The other section of code generates local TLS certs you'll need to complete the 
     1. `FLICKR_CONSUMER_KEY` and `FLICKR_CONSUMER_SECRET` are the values you just obtained from Flickr
     1. The next 5 (`FLICKR_REQUEST_TOKEN` to `FLICKR_OAUTH_TOKEN_VERIFIER`) will be obtained from the app. Leave them `tbd` for now
     1. Enter your `FLICKR_ALBUM_ID` and `USER_ID` obtained above
+    1. Choose the primary photo for the album (or use the existing one) by navigating to it via a web browser and saving the photo ID in `FLICKR_PRIMARY_PHOTO_ID`
     1. Leave `LOCAL_KEY_FILE` and `LOCAL_CERT_FILE` alone
 1. Ensure you have NodeJS installed ([instructions](https://nodejs.org/en/download/package-manager/))
 1. **Optional:** install `nvm` ([instructions](https://github.com/nvm-sh/nvm)) and run `nvm use` to use the version of NodeJS I specified in the `.nvmrc` file
@@ -95,38 +97,21 @@ Generally tho I don't recommend you use these endpoints but instead write your o
 
 One note on the `/reorder` endpoint tho:
 
-## flickr.photoset.reorderPhotos function isn't perfect
+## There's a bug in the Flickr API SDK!
 
-Flckr has a strange way of reordering photos that I don't fully understand, but this is the least worst approach I could come up with.
+Note that there is a bug (as of February 2022) in the Flickr SDK that will prevent successful reordering of photos: https://github.com/flickr/flickr-sdk/issues/143
 
-**Problem 1:** Using the standard Flickr SDK for their REST API endpoints (either `photosets.reorderPhotos` or `photosets.editPhotos`) will return a `414` error if there are too many photo IDs, saying:
+### How to fix the bug (for now)
 
-```
-Error: URI Too Long
-    at Request.callback (/flickr-deduper/node_modules/superagent/lib/node/index.js:883:15)
-    at IncomingMessage.<anonymous> (/flickr-deduper/node_modules/superagent/lib/node/index.js:1127:20)
-```
+After running `npm install` you'll need to navigate to `node_modules/flickr-sdk/services/rest.js` and change:
 
-If there's a way around this problem I have yet to find it, possibly the issue is with the Flickr SDK using `superagent` to send the photo IDs as one long string - one would probably have to not use the SDK and POST directly to the REST endpoint with the data payload as JSON, but that means [signing the request](https://www.flickr.com/services/api/auth.oauth.html) -- which is almost tantamount to writing one's own Flickr API SDK.
+`.query(args)`
 
-**Problem 2:** The [Flickr documentation](https://www.flickr.com/services/api/flickr.photosets.reorderPhotos.html) says if a photo ID is not present in the request it doesn't change. But that's not strictly true, if you send batches of 500 photos (roughly the limit of IDs that can fit into a single URI) it will not displace or push the order of the first 500 photos, instead it will oddly splice the order.
+to:
 
-E.g.
-```
-Req 1: Photo1, Photo2, Photo3...
-Req 2: Photo501, Photo502, Photo503...
-Req 3: Photo1001, Photo1002, Photo1003...
-```
+`.param(args)`
 
-In many cases the resulting order will be `Photo1`, `Photo501`, `Photo10001`. But not always! And I'm not sure why. Maybe it's a timing thing and I need to add a wait to these requests so Flickr has more time to process them? Not sure.
-
-While the below is not perfect it roughly puts things in descending order of most recently shot first, using the timestamp of the photo.
-
-It does this by first creating a set of subarrays, however many are needed to support 250 photo IDs at a time.
-
-Then it uses modular arithmetic to distribute photos sequentially into the resulting subarrays.
-
-Once those subarrays are constructed it hits the Flickr REST API with the list of photo IDs. Not perfect but good enough for my purposes.
+Or from Mac/Linux terminal in the root of the repo run `sed -i 's/.query(args)/.param(args)/' ./node_modules/flickr-sdk/services/rest.js`.
 
 ## Dockerfile
 

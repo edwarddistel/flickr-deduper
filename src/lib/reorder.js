@@ -1,43 +1,33 @@
 // Submits an ordered, comma-separated list of photos to be ordered
-function reorderPhotos(str, flickr) {
-  // console.log(str);  // uncomment to see order of photo IDs being sent
-  return flickr.photosets.reorderPhotos({
+async function editPhotos(list, flickr) {
+  return flickr.photosets.editPhotos({
     photoset_id: process.env.FLICKR_ALBUM_ID,
-    photo_ids: str,
+    primary_photo_id: process.env.FLICKR_PRIMARY_PHOTO_ID,
+    photo_ids: list,
   });
 }
 
-const BATCH_IMAGE_LIMIT = 250;
-
-/* Logic:
-- Divide total photos by BATCH_IMAGE_LIMIT
-- Distribute photos into subarrays % mod subArray #
-- Send batches for ordering
-See README for more details on how/why
-*/
+// Reorder using galleries.editPhotos instead of photosets.reorderPhotos
 async function sortByDateTaken(flickr, albumData) {
   if (
     albumData
     && albumData.dateTakenArr
     && albumData.dateTakenArr.length > 0
   ) {
-    const dates = [];
-    const subArrs = Math.ceil(albumData.dateTakenArr.length / BATCH_IMAGE_LIMIT);
-    for (let i = 0; i < subArrs; i++) {
-      dates.push([]);
-    }
-    const subArrsOffset = subArrs - 1;
+    const photoIds = [];
     albumData.dateTakenArr
       .sort()
       .reverse()
-      .forEach((epochDate, index) => {
-        const arrCtr = index % subArrsOffset;
-        dates[arrCtr].push(albumData.dateTakenMap[epochDate]);
+      .forEach((epochDate) => {
+        photoIds.push(albumData.dateTakenMap[epochDate][0]);
       });
-    for (let j = 0; j < subArrs; j++) {
-      console.log(`Reordering batch ${j + 1}...`);
-      await reorderPhotos(dates[j].join(','), flickr);
+    if (!photoIds.includes(process.env.FLICKR_PRIMARY_PHOTO_ID)) photoIds.push(process.env.FLICKR_PRIMARY_PHOTO_ID);
+    try {
+      await editPhotos(photoIds.join(','), flickr);
+    } catch (err) {
+      console.log('ed sucks', err);
     }
+
     console.log('Photos reordered.');
   } else {
     console.log('Album empty, nothing to order.');
