@@ -95,24 +95,6 @@ If you want to save the data to disk so you don't have to refetch all of it on e
 
 Generally tho I don't recommend you use these endpoints but instead write your own interaction with the Flickr API.
 
-One note on the `/reorder` endpoint tho:
-
-## There's a bug in the Flickr API SDK!
-
-Note that there is a bug (as of February 2022) in the Flickr SDK that will prevent successful reordering of photos: https://github.com/flickr/flickr-sdk/issues/143
-
-### How to fix the bug (for now)
-
-After running `npm install` you'll need to navigate to `node_modules/flickr-sdk/services/rest.js` and change:
-
-`.query(args)`
-
-to:
-
-`.param(args)`
-
-Or from Mac/Linux terminal in the root of the repo run `sed -i 's/.query(args)/.param(args)/' ./node_modules/flickr-sdk/services/rest.js`.
-
 ## Dockerfile
 
 There's a Dockerfile in this repo that builds this app and runs it in a container, and then uses [forever](https://www.npmjs.com/package/forever to run the server as a background daemon.
