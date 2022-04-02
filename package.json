@@ -15,16 +15,16 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "axios": "^0.25.0",
+    "axios": "^0.26.1",
     "dotenv": "^16.0.0",
-    "express": "^4.17.2",
-    "flickr-sdk": "^5.0.0",
+    "express": "^4.17.3",
+    "flickr-sdk": "^6.0.0",
     "forever": "^4.0.3"
   },
   "devDependencies": {
-    "eslint": "^8.8.0",
+    "eslint": "^8.12.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "nodemon": "^2.0.15",
-    "npm-check-updates": "^12.2.1"
+    "npm-check-updates": "^12.5.5"
   }
 }

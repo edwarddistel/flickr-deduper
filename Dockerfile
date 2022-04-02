@@ -12,4 +12,4 @@ RUN chmod 0644 /etc/cron.d/flickr-cron
 RUN crontab /etc/cron.d/flickr-cron
 RUN npm install
 CMD ["cron", "-f"]
-RUN npm run forever
+RUN npx forever start -o forever-log.out -e forever-error.log src/index.js

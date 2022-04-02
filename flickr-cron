@@ -9,3 +9,4 @@
 30 0 * * * /usr/bin/curl -s http://localhost:3000/reorder >> /usr/app/flickr-cron-log.txt 2>&1 && echo "" >> /usr/app/flickr-cron-log.txt
 10 1 * * * /usr/bin/curl -s http://localhost:3000/get-sizes >> /usr/app/flickr-cron-log.txt 2>&1 && echo "" >> /usr/app/flickr-cron-log.txt
 10 2 * * * /usr/bin/curl -s http://localhost:3000/save-data >> /usr/app/flickr-cron-log.txt 2>&1 && echo "" >> /usr/app/flickr-cron-log.txt
+0 12 * * * /usr/app/check-if-running.sh &>/dev/null
