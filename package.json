@@ -18,7 +18,7 @@
     "axios": "^1.4.0",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "flickr-sdk": "^6.2.0",
+    "flickr-sdk": "^6.2.1",
     "forever": "^4.0.3"
   },
   "devDependencies": {
