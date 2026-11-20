@@ -1,0 +1,12 @@
+# Single private container: .env is baked into the image at build time.
+services:
+  flickr-deduper:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - flickr-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  flickr-data:

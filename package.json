@@ -1,30 +1,22 @@
 {
-  "name": "flickr-album-organizer",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "flickr-deduper",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Audit Flickr albums for same-timestamp photos, reorder albums, and back up originals.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "scripts": {
-    "dev": "nodemon src/index.js",
-    "forever": "npx forever start -o forever-log.out -e forever-error.log src/index.js",
-    "format": "eslint --fix \"$PWD/src/**/*.js\"",
-    "oauth": "bash ./generate-cert.sh && node src/oauth.js",
-    "start": "node src/index.js",
-    "update": "ncu -u && npm update && rm package-lock.json && npm install"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "oauth": "node src/oauth.js",
+    "cli": "node src/cli.js",
+    "schedule": "node src/scheduler.js",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "lint": "node scripts/check-syntax.js",
+    "check": "npm run lint && npm test"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "axios": "^1.21.1",
-    "dotenv": "^18.0.10",
-    "express": "^5.3.0",
-    "flickr-sdk": "^7.1.0",
-    "forever": "^4.0.3"
-  },
-  "devDependencies": {
-    "eslint": "^10.15.0",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "nodemon": "^3.1.14",
-    "npm-check-updates": "^23.1.1"
-  }
+  "license": "MIT"
 }

@@ -1,106 +1,238 @@
-# Flickr deduper and sorter
+# Flickr Deduper & Album Sorter
 
-You probably shouldn't use this repo.
+A small, self-hosted Flickr album maintenance tool. It exists because the Flickr iOS uploader sometimes uploads the same photo twice (and sometimes you accidentally upload one yourself). This tool works on **one configured Flickr album**: it fetches all photo IDs, identifies possible duplicates, sorts photos by capture time, retrieves the largest available image URLs, and can download a local backup. It runs on a laptop, a home server, or a private Docker container/NAS.
 
-If it has any use it's probably to show you how to interface with the Flickr API using the [NodeJS Flickr SDK](https://github.com/flickr/flickr-sdk). 
+The original project used Express, `flickr-sdk`, `axios`, `forever`, and cron. Version 2 replaces those dependencies with native Node.js features (HTTP/HTTPS, `fetch`, OAuth 1.0a signing, scheduling, filesystem APIs, and the built-in test runner). **No third-party npm packages are required.**
 
-I created this because I upload photos from my iPhone to Flickr using the Flickr iOS app, except it doesn't always work. Sometimes Flickr will re-upload the same image. Other times I fatfinger the upload and upload dupes.
+> **Important:** The duplicate heuristic is an exact match of Flickr's `datetaken` timestamp. Two different photos can share the same timestamp! Preview the results before deleting anything. Flickr photo deletion is **permanent across your account**, not just removal from an album.
 
-I wanted an app to:
-- Dedupe a single photoset
-- Reorder the photos by most recently taken
-- Automatically grab the URLs of the largest size of all photos in the photoset
-- Run as a background service so it can be automatically run every night
+## What it does
 
-Below I explain how to set up a connection with Flickr using the [NodeJS Flickr SDK](https://github.com/flickr/flickr-sdk), I'd recommend just using that. 
-But if you're feeling bold and want to try the exact code I wrote for myself, here's a quick overview of the architecture and endpoints.
+| Feature | Behavior |
+| --- | --- |
+| Authenticate | One-time, local HTTPS OAuth 1.0a flow; saves the issued tokens in `.env` |
+| Discover albums | Lists photosets visible to the authenticated account |
+| Refresh | Fetches **every** page of the configured album; caches a JSON snapshot |
+| Duplicate report | Groups photo IDs with identical capture timestamps; **does not delete** |
+| Explicit delete | Deletes marked candidates only after an album-ID confirmation and an acknowledgment of the heuristic |
+| Reorder | Places the newest capture dates first, including ties and photos missing capture dates |
+| Fetch sizes | Caches the largest HTTPS image URL for each photo |
+| Backup | Downloads images to a local directory, skips existing files and reports failures |
+| Track ugly photos | Saves an independent list of photo IDs for later inspection |
+| Daily run | Refreshes, optionally removes duplicates, updates URLs and optionally reorders at `SYNC_TIME` |
+| Docker | Builds a **self-contained private image with `.env` copied inside it** |
 
-## Basic architecture
-![](/img/flickr-deduper-architecture.png)
+## Architecture
 
-The main app is an [Express server](https://www.npmjs.com/package/express) designed to run on your local machine or in a Docker container. It has a bunch of endpoints that receive HTTP requests and interact with the Flickr data in some way.
+The original overview diagram is retained below; the new implementation no longer needs Express, the Flickr SDK, `forever`, or cron.
 
-The other section of code generates local TLS certs you'll need to complete the Oauth process, then runs the code necessary to retrieve the access codes. It's a one-time setup that you'll never need to repeat.
+![Original architecture diagram](img/flickr-deduper-architecture.png)
 
-## Getting set up with the Flickr API
+`src/flickr-client.js` handles signed Flickr calls, `src/album.js` contains pure planning algorithms, `src/service.js` coordinates album operations, `src/storage.js` handles saved snapshots, and `src/server.js` runs the HTTP API with a built-in daily scheduler. Data is stored at `DATA_DIR/album.json` and backups at `DATA_DIR/backup/`.
 
-1. [Register for an account with Flickr](https://identity.flickr.com/sign-up) if you haven't already, and log in.
-1. Go to Flickr's "App Garden" and [create an app](https://www.flickr.com/services/apps/create/apply) by clicking "apply for a non-commercial key"
-1. Fill out the form, check the boxes ![](/img/flickr-1.png), hit submit
-1. Copy down the **Key** and **Secret** provided to you and store them somewhere safe
-1. While logged into Flickr.com, go to the photo album you want to work with and look at the URL. It should be something like `https://www.flickr.com/photos/123456789@N05/albums/123456789123456`. In this example `123456789@N05` is the **user id** and `123456789123456` is the **album ID**. Write yours down
-1. Copy `.env.example` in the root folder to `.env`
-1. Open `.env` in a text editor
-    ```
-    FLICKR_CONSUMER_KEY=tbd
-    FLICKR_CONSUMER_SECRET=tbd
-    FLICKR_REQUEST_TOKEN=tbd
-    FLICKR_REQUEST_TOKEN_SECRET=tbd
-    FLICKR_OAUTH_TOKEN=tbd
-    FLICKR_OAUTH_TOKEN_SECRET=tbd
-    FLICKR_OAUTH_TOKEN_VERIFIER=tbd
-    FLICKR_ALBUM_ID=tbd
-    FLICKR_PRIMARY_PHOTO_ID=tbd
-    USER_ID=tbd
-    LOCAL_KEY_FILE=key.pem
-    LOCAL_CERT_FILE=cert.pem
-    ```
-    1. `FLICKR_CONSUMER_KEY` and `FLICKR_CONSUMER_SECRET` are the values you just obtained from Flickr
-    1. The next 5 (`FLICKR_REQUEST_TOKEN` to `FLICKR_OAUTH_TOKEN_VERIFIER`) will be obtained from the app. Leave them `tbd` for now
-    1. Enter your `FLICKR_ALBUM_ID` and `USER_ID` obtained above
-    1. Choose the primary photo for the album (or use the existing one) by navigating to it via a web browser and saving the photo ID in `FLICKR_PRIMARY_PHOTO_ID`
-    1. Leave `LOCAL_KEY_FILE` and `LOCAL_CERT_FILE` alone
-1. Ensure you have NodeJS installed ([instructions](https://nodejs.org/en/download/package-manager/))
-1. **Optional:** install `nvm` ([instructions](https://github.com/nvm-sh/nvm)) and run `nvm use` to use the version of NodeJS I specified in the `.nvmrc` file
-1. Install the dependencies by running `npm i`
-1. Here's where things start to get dicey so buckle up.
-    1. Flickr has a [fairly thorough overview of its Oauth process](https://www.flickr.com/services/api/auth.oauth.html) but it's not the most user-friendly walkthrough I've ever seen.
-    1. To authorize your app (yes, that's required as part of the Oauth process, generating the key and secret is not enough by itself) you'll need to run a server on your local machine, open that in your web browser, then click the authorize button. The app will record the credentials produced by that process and save them for you in the `.env` file
-    1. To make the above more complicated, the process requires the local server be HTTPS, HTTP will not do. So you need to generate a self-signed certificate locally to produce `key.pem` and `cert.pem` files
-    1. I have a bash script that will generate those files for you (`generate-cert.sh`) but we can kill two birds with one one by just running `npm run oauth`, which will run that bash script and then start up the server. So let's do that and see what that looks like
-    1. If succesful you should see this in your terminal ![](/img/flickr-3.png)
-    1. As the terminal says, open your web browser and navigate to [https://localhost:3000](https://localhost:3000).
-    1. You'll get a warning that it's unsafe. That's expected, because the cert is self-signed. Click "Advanced" and "Proceed to localhost (unsafe)" ![](/img/flickr-4.png)
-    1. You should see the authorization screen in your browser. Click "OK, I'LL AUTHORIZE IT" ![](/img/flickr-5.png)
-    1. If it worked, 3 things will happen. First, you will be redirected in your browser to some JSON output that will (if parsed via a Chrome extension) look like this ![](/img/flickr-6.png)
-    1. Second, the app should have overwritten your `.env` file to populate all the values like so ![](/img/flickr-7.png)
-    1. But maybe that didn't happen, because maybe the process doesn't have write permissions to that folder, or some other reason. As a backup the values should all be outputted to the terminal, where you can manually enter them into your `.env` file ![](/img/flickr-8.png)
-    1. You should be able to now interface with the Flickr API! And if the credentials are stored to that `.env` file, you'll never need to repeat that process. But let's test it out
-1. Hit `CTRL-C` to interrupt that process and bring you back to the terminal. Now let's run the main app by typing `npm start`. You should see ![](/img/flickr-9.png) There's no saved data file because you haven't loaded any data yet much less saved it to disk.
-1. Let's test the API credentials by opening up your browser and going to [http://localhost:3000/test-login](http://localhost:3000/test-login). If that worked you should see
-    1. ![](/img/flickr-10.png)
+## Quick start
 
-That's it! You now have a working set of credentials to engage with the Flickr API and can write your own programs.
+**Requirements:** Node.js 26 LTS (recommended; minimum Node.js 22.16), a Flickr account, and a Flickr API key and secret. Docker is optional. For the one-time OAuth setup, install OpenSSL.
 
-If you want to use the endpoints programmed into this app, here they are.
+1. [Register for Flickr](https://identity.flickr.com/sign-up) and sign in.
+2. Go to the [Flickr App Garden](https://www.flickr.com/services/apps/create/apply), apply for a non-commercial API key, and copy the **Key** and **Secret**. Flickr's [OAuth guide](https://www.flickr.com/services/api/auth.oauth.html) explains the authorization protocol.
+3. Open the album in your browser. Its URL resembles `https://www.flickr.com/photos/123456789@N05/albums/123456789123456`. The part after `/photos/` is `USER_ID`, and the part after `/albums/` is `FLICKR_ALBUM_ID`.
+4. Copy the example configuration and fill in your details:
 
-## Flickr deduper endpoints
+   ```bash
+   cp .env.example .env
+   # Edit .env: FLICKR_CONSUMER_KEY, FLICKR_CONSUMER_SECRET,
+   # FLICKR_ALBUM_ID and USER_ID
+   npm ci
+   ```
 
-| URL | What it does |
-------|---------------
-| http://localhost:3000/test-login | tests credentials by attempting to log in |
-| http://localhost:3000/get-photos | obtains all photo data from album listed in `.env` file |
-| http://localhost:3000/get-photosets | lists all photosets associated with user |
-| http://localhost:3000/dedupe | dangerous! deletes duplicate photos in the specified album |
-| http://localhost:3000/info | return the current data set |
-| http://localhost:3000/reorder | attempts to re-sort album by most recently taken photo |
-| http://localhost:3000/get-sizes | gets the largest file sizes for photos in the album |
-| http://localhost:3000/save-data | saves obtained data to your computer |
-| http://localhost:3000/ugly | a POST endpoint to record ugly photos |
-| http://localhost:3000/download-photos | download to disk all photo URLs from `/get-sizes` |
+5. **If you already have a working `.env` with `FLICKR_OAUTH_TOKEN` and `FLICKR_OAUTH_TOKEN_SECRET`, keep those values.** You can skip the OAuth steps. The old `FLICKR_REQUEST_TOKEN`, `FLICKR_REQUEST_TOKEN_SECRET`, and `FLICKR_OAUTH_TOKEN_VERIFIER` values are no longer needed.
+6. Otherwise authorize your application **on your computer, before building Docker**:
 
-`/dedupe` is **dangerous**. It can and will delete photos from your Flickr account **permanently**, so I don't recommend you use it unless you've already stored copies of all the photos (which you can do via `/get-photos`, `/get-sizes`, then `/download-photos`).
+   ```bash
+   ./generate-cert.sh
+   npm run oauth
+   ```
 
-If you want to save the data to disk so you don't have to refetch all of it on every run just hit `/save-data`. It will save your data to `src/data`.
+   Open **https://localhost:3000/**. Your browser will warn about the locally generated self-signed certificate; continue for localhost only. Log into Flickr and approve access. The local callback automatically writes your issued OAuth tokens to `.env`. Stop the OAuth process afterward with `Ctrl+C`.
+7. Confirm your credentials and fetch the album:
 
-Generally tho I don't recommend you use these endpoints but instead write your own interaction with the Flickr API.
+   ```bash
+   npm run cli -- login
+   npm run cli -- sets
+   npm run cli -- refresh
+   npm run cli -- duplicates
+   ```
 
-## Dockerfile
+8. Run `npm start` to start the API and **daily background scheduler in the same Node.js process**, or deploy via Docker below.
 
-There's a Dockerfile in this repo that builds this app and runs it in a container, and then uses [forever](https://www.npmjs.com/package/forever to run the server as a background daemon.
+### Original setup screenshots
 
-I run this app in a Docker container on a NAS, then run a cron job on my NAS to copy the data output to a webserver. But that's why `flickr-cron` is in root as well as the `Dockerfile`.
+These pictures illustrate Flickr's App Garden and the older OAuth setup, so the port and screen wording can differ slightly from the current instructions.
 
-## Good luck
+<details>
+<summary>Flickr App Garden, OAuth authorization and login screenshots</summary>
 
-That's it! Good luck.
+![Flickr App Garden form](img/flickr-1.png)
+
+![Original OAuth process](img/flickr-2.png)
+
+![OAuth server output](img/flickr-3.png)
+
+![Local self-signed TLS warning](img/flickr-4.png)
+
+![Authorize the application](img/flickr-5.png)
+
+![Authentication response](img/flickr-6.png)
+
+![Saved environment file](img/flickr-7.png)
+
+![OAuth token console output in the old app](img/flickr-8.png)
+
+![Server startup in the old app](img/flickr-9.png)
+
+![Flickr test login](img/flickr-10.png)
+
+</details>
+
+## Private Docker / NAS deployment — `.env` deliberately baked in
+
+**This is the intended setup for the project.** You prepare `.env` locally with the credentials and then build a private image that already contains everything needed to talk to Flickr. **No Docker `--env-file`, secret volumes, remote secret manager, or startup credential injection is required.**
+
+```bash
+# From this repository's root, after creating a real .env:
+docker build -t flickr-deduper:local .
+docker run -d \
+  --name flickr-deduper \
+  --restart unless-stopped \
+  -p 127.0.0.1:3000:3000 \
+  -v flickr-deduper-data:/app/data \
+  flickr-deduper:local
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose up -d --build
+docker compose logs -f
+```
+
+The Dockerfile intentionally executes `COPY .env ./.env`, and **`.dockerignore` intentionally allows `.env` into the build context**. Docker sets `HOST=0.0.0.0` and `DATA_DIR=/app/data`, so the API is reachable through the locally bound host port while the album snapshot and downloaded photos persist in the named volume.
+
+**The `.env` file is ignored by Git, not by Docker.** It is not supplied in the repository ZIP; create it on the machine where you build the image. The resulting local image does contain the secrets, including in extractable filesystem layers. Keep images, build caches, machine access and backups private; do not push the image to a public registry. If credentials change, update `.env` and rebuild the image. If you accidentally publish an image, revoke the affected Flickr tokens and rebuild.
+
+**Note:** `docker build` will intentionally fail without a local `.env`; this protects against accidentally producing a container that cannot authenticate.
+
+## Everyday CLI operations
+
+The CLI provides the most explicit and safest way to make changes. Run `npm run cli -- help` for the current command reference.
+
+```bash
+npm run cli -- refresh       # fetch every album page; save state
+npm run cli -- duplicates    # inspect candidate groups (no deletion)
+npm run cli -- sizes         # cache highest-resolution URLs
+npm run cli -- backup        # download images into DATA_DIR/backup
+npm run cli -- reorder --confirm YOUR_ALBUM_ID
+npm run cli -- ugly --ids 123456,987654
+npm run cli -- sync          # perform nightly workflow immediately
+```
+
+**Permanent deletion is manual by default.** After checking the candidate IDs, execute:
+
+```bash
+npm run cli -- dedupe \
+  --confirm YOUR_ALBUM_ID \
+  --allow-timestamp-only
+```
+
+This re-fetches the current album, determines candidates, waits for each Flickr deletion, and refreshes the saved snapshot. It favors the album's primary photo when there is a timestamp collision; otherwise it retains the earliest uploaded photo.
+
+You can run the CLI from the already-built container without passing credentials:
+
+```bash
+docker exec flickr-deduper node src/cli.js duplicates
+docker exec flickr-deduper node src/cli.js refresh
+```
+
+### Automated daily run
+
+By default, the same container runs the HTTP server **and** a daily maintenance job at `03:00` in `America/New_York`. Configure:
+
+```dotenv
+AUTO_SYNC=true
+SYNC_TIME=03:00
+TZ=America/New_York
+AUTO_REORDER=true
+AUTO_DELETE=false
+```
+
+The daily workflow updates the photo list, caches image URLs, and reorders the album when enabled. To restore the old app's **automatic nightly permanent deletion**, consciously opt in with all three settings below in your local `.env`, then rebuild the image:
+
+```dotenv
+AUTO_DELETE=true
+AUTO_DELETE_CONFIRM_ALBUM_ID=YOUR_ALBUM_ID
+AUTO_DELETE_ALLOW_TIMESTAMP_ONLY=true
+```
+
+These separate settings prevent an incidental deployment from deleting photos just because the original app used a cron job. If you want only manual operations, set `AUTO_SYNC=false`.
+
+## HTTP API
+
+The HTTP interface is convenient for local automation. The Docker port is exposed on **127.0.0.1 only**, so it is not publicly accessible by default.
+
+| Method and path | Result |
+| --- | --- |
+| `GET /` | Service status |
+| `GET /test-login` | Test Flickr authentication |
+| `GET /get-photosets` | List available Flickr albums |
+| `GET /get-photos` | Fetch all pages and refresh snapshot |
+| `GET /dedupe` or `GET /duplicates` | **Preview**, not delete, timestamp matches |
+| `GET /info` | Return the cached album snapshot |
+| `POST /dedupe` | Permanently delete confirmed candidate IDs |
+| `POST /reorder` | Sort the album newest-first |
+| `POST /get-sizes` | Cache largest available image URLs |
+| `POST /download-photos` | Back up images to disk |
+| `POST /save-data` | Save the current snapshot |
+| `POST /ugly` | Flag photo IDs for manual review |
+| `POST /sync` | Run maintenance immediately |
+
+`POST` operations require an `ADMIN_TOKEN` value in `.env` and an `Authorization: Bearer ...` header; without it, they are disabled. This is separate from Flickr's OAuth tokens.
+
+```bash
+curl -s http://localhost:3000/duplicates
+curl -s -X POST http://localhost:3000/ugly \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"photoIds":["123456","987654"]}'
+```
+
+For destructive deletion, `POST /dedupe` additionally requires body `{"confirmAlbumId":"YOUR_ALBUM_ID","allowTimestampOnly":true}`. A plain `GET /dedupe` can never delete anything. Unlike the old code, requests wait for Flickr to complete before responding.
+
+## Data format and migration
+
+The app saves a versioned JSON snapshot at `DATA_DIR/album.json`, with photo IDs, capture/upload dates, cached URLs, primary photo ID and the list of photos flagged as ugly. It uses atomic file replacement, so an interrupted write does not leave half-written JSON.
+
+If you have an old `src/data/albumData.json`, **save a backup of it first**. Place it at its original path and launch from the repository root. The loader attempts a one-time migration when the new data file does not yet exist. Old URLs and ugly-photo marks are preserved. A fresh `refresh` adds the current Flickr metadata and primary photo. For Docker, do that migration on the host before building, or copy the migrated `data/album.json` into the persistent volume.
+
+## Development and verification
+
+```bash
+npm ci                # no third-party runtime dependencies
+npm run check         # syntax check + unit/integration tests
+npm run test:coverage # Node built-in coverage
+npm run dev           # Node watch mode
+```
+
+Tests use stubbed Flickr responses and temporary files. They cover OAuth signing against a reference vector, API requests, pagination (including one-page albums), duplicate planning, deletion confirmation, HTTP auth, persistence, scheduling, and backup behavior. **No live credentials are necessary or used by the test suite.** This is not a substitute for trying the app against your own Flickr account before enabling deletion.
+
+The GitHub Actions workflow tests Node.js 22, 24 and 26. `.DS_Store`, `__MACOSX`, temporary `.env` files, generated certificates, and downloaded data are excluded from version control.
+
+## Flickr API references
+
+- [Flickr OAuth documentation](https://www.flickr.com/services/api/auth.oauth.html)
+- [List photos in an album](https://www.flickr.com/services/api/flickr.photosets.getPhotos.html)
+- [Edit a photoset's photo order](https://www.flickr.com/services/api/flickr.photosets.editPhotos.html)
+- [Get photo sizes](https://www.flickr.com/services/api/flickr.photos.getSizes.html)
+- [Flickr SDK](https://github.com/flickr/flickr-sdk), used by the original edition but no longer required
+
+This is a personal, self-hosted tool; verify backups and review timestamp collisions before enabling automatic deletion.

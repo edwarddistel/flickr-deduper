@@ -1,7 +1,9 @@
-#!/bin/bash
-openssl genrsa -out key.pem
-openssl req -new -key key.pem -out csr.pem -subj "/C=US/ST=NY/L=NYC/O=localhost/OU=localhost/CN=localhost"
-openssl x509 -req -days 9999 -in csr.pem -signkey key.pem -out cert.pem
-rm csr.pem
-mv key.pem src/key.pem
-mv cert.pem src/cert.pem
+#!/bin/sh
+# Local-only self-signed certificate for the one-time Flickr OAuth callback.
+set -eu
+umask 077
+openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 365 \
+  -keyout key.pem -out cert.pem \
+  -subj '/CN=localhost' \
+  -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'
+printf 'Created key.pem and cert.pem for local OAuth (both gitignored).\n'
